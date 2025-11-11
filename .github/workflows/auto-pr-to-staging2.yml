@@ -1,0 +1,51 @@
+name: Auto PR to staging2
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Check if PR already exists
+        id: check-pr
+        run: |
+          PR_EXISTS=$(gh pr list --base staging2 --head master --state open --json number --jq 'length')
+          if [ "$PR_EXISTS" -gt 0 ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "PR already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No existing PR found"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create Pull Request
+        if: steps.check-pr.outputs.exists == 'false'
+        run: |
+          gh pr create \
+            --base staging2 \
+            --head master \
+            --title "Auto PR: Update staging2 from master" \
+            --body "This PR was automatically created when master branch was updated."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
