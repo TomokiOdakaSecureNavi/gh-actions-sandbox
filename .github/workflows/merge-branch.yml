@@ -1,0 +1,53 @@
+name: merge-branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'マージするブランチ（例: feature/xxx）'
+        required: true
+        type: string
+      target_branch:
+        description: 'マージ先'
+        required: true
+        type: choice
+        options:
+          - develop
+          - staging2
+        default: staging2
+
+jobs:
+  merge-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout target branch
+        run: git checkout ${{ inputs.target_branch }}
+
+      - name: Pull latest target branch
+        run: git pull origin ${{ inputs.target_branch }} --no-edit
+
+      - name: Merge source branch
+        run: |
+          git merge origin/${{ inputs.source_branch }} --no-edit
+        env:
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+
+      - name: Push to remote
+        run: git push origin ${{ inputs.target_branch }}
