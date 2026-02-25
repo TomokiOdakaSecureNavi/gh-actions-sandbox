@@ -1,4 +1,4 @@
-name: merge-branch
+name: Merge and Push
 
 on:
   workflow_dispatch:
