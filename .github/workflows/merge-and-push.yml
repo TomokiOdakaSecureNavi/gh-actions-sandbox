@@ -25,6 +25,11 @@ jobs:
       TARGET_BRANCH: ${{ inputs.target_branch }}
 
     steps:
+      - name: Validate branch names
+        run: |
+          git check-ref-format --branch "$SOURCE_BRANCH"
+          git check-ref-format --branch "$TARGET_BRANCH"
+
       - name: Log workflow inputs
         run: |
           echo "::group::📥 入力パラメータ"
@@ -52,7 +57,6 @@ jobs:
       - name: Merge source branch
         run: |
           echo "::group::Merge $SOURCE_BRANCH → $TARGET_BRANCH"
-          git check-ref-format --branch "$SOURCE_BRANCH"
           git merge --no-edit -- "origin/$SOURCE_BRANCH"
           echo "Merged. New HEAD: $(git log -1 --oneline)"
           echo "::endgroup::"
