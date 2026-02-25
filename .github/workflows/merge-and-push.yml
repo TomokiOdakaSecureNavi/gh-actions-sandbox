@@ -44,7 +44,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Checkout target branch
-        run: git checkout -- "$TARGET_BRANCH"
+        run: git checkout "$TARGET_BRANCH"
 
       - name: Pull latest target branch
         run: git pull origin "$TARGET_BRANCH" --no-edit
