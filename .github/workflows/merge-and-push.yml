@@ -13,7 +13,6 @@ on:
         type: choice
         options:
           - develop
-          - staging2
         default: develop
 
 jobs:
@@ -21,8 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+      TARGET_BRANCH: ${{ inputs.target_branch }}
 
     steps:
+      - name: Log workflow inputs
+        run: |
+          echo "::group::📥 入力パラメータ"
+          echo "source_branch: $SOURCE_BRANCH"
+          echo "target_branch: $TARGET_BRANCH"
+          echo "::endgroup::"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -35,14 +44,17 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Checkout target branch
-        run: git checkout ${{ inputs.target_branch }}
+        run: git checkout -- "$TARGET_BRANCH"
 
       - name: Pull latest target branch
-        run: git pull origin ${{ inputs.target_branch }} --no-edit
+        run: git pull origin "$TARGET_BRANCH" --no-edit
 
       - name: Merge source branch
         run: |
-          git merge origin/${{ inputs.source_branch }} --no-edit
+          echo "::group::Merge $SOURCE_BRANCH → $TARGET_BRANCH"
+          git merge "origin/$SOURCE_BRANCH" --no-edit
+          echo "Merged. New HEAD: $(git log -1 --oneline)"
+          echo "::endgroup::"
         env:
           GIT_AUTHOR_NAME: "github-actions[bot]"
           GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
@@ -50,4 +62,4 @@ jobs:
           GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
 
       - name: Push to remote
-        run: git push origin ${{ inputs.target_branch }}
+        run: git push origin "$TARGET_BRANCH"
