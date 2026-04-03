@@ -33,7 +33,7 @@ jobs:
       - name: Check if PR already exists
         id: check-pr
         run: |
-          PR_EXISTS=$(gh pr list --base ${{ inputs.base_branch }} --head ${{ inputs.head_branch }} --state open --json number --jq 'length')
+          PR_EXISTS=$(gh pr list --repo ${{ github.repository }} --base ${{ inputs.base_branch }} --head ${{ inputs.head_branch }} --state open --json number --jq 'length')
           if [ "$PR_EXISTS" -gt 0 ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "PR already exists"
@@ -48,6 +48,7 @@ jobs:
         if: steps.check-pr.outputs.exists == 'false'
         run: |
           gh pr create \
+            --repo ${{ github.repository }} \
             --base ${{ inputs.base_branch }} \
             --head ${{ inputs.head_branch }} \
             --title "${{ inputs.pr_title }}" \
