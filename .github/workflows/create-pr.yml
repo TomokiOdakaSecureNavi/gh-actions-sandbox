@@ -44,8 +44,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Create Pull Request
+      - name: Check for diff between branches
+        id: check-diff
         if: steps.check-pr.outputs.exists == 'false'
+        run: |
+          ENCODED_BASE=$(jq -rn --arg v "$BASE_BRANCH" '$v|@uri')
+          ENCODED_HEAD=$(jq -rn --arg v "$HEAD_BRANCH" '$v|@uri')
+          DIFF_COUNT=$(gh api "repos/$GITHUB_REPOSITORY/compare/${ENCODED_BASE}...${ENCODED_HEAD}" --jq '.total_commits')
+          if [ "$DIFF_COUNT" -eq 0 ]; then
+            echo "has_diff=false" >> $GITHUB_OUTPUT
+            echo "No commits between $BASE_BRANCH and $HEAD_BRANCH. Skipping PR creation."
+          else
+            echo "has_diff=true" >> $GITHUB_OUTPUT
+            echo "Found $DIFF_COUNT commit(s) between branches."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          HEAD_BRANCH: ${{ inputs.head_branch }}
+
+      - name: Create Pull Request
+        if: steps.check-pr.outputs.exists == 'false' && steps.check-diff.outputs.has_diff == 'true'
         run: |
           gh pr create \
             --repo ${{ github.repository }} \
@@ -55,4 +74,3 @@ jobs:
             --body "${{ inputs.pr_body }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
