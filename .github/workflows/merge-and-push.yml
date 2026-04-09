@@ -1,0 +1,70 @@
+name: Merge and Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'マージするブランチ（例: feature/xxx）'
+        required: true
+        type: string
+      target_branch:
+        description: 'マージ先'
+        required: true
+        type: choice
+        options:
+          - develop
+        default: develop
+
+jobs:
+  merge-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+      TARGET_BRANCH: ${{ inputs.target_branch }}
+
+    steps:
+      - name: Validate branch names
+        run: |
+          git check-ref-format --branch "$SOURCE_BRANCH"
+          git check-ref-format --branch "$TARGET_BRANCH"
+
+      - name: Log workflow inputs
+        run: |
+          echo "::group::📥 入力パラメータ"
+          echo "source_branch: $SOURCE_BRANCH"
+          echo "target_branch: $TARGET_BRANCH"
+          echo "::endgroup::"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout target branch
+        run: git checkout "$TARGET_BRANCH"
+
+      - name: Pull latest target branch
+        run: git pull origin "$TARGET_BRANCH" --no-edit
+
+      - name: Merge source branch
+        run: |
+          echo "::group::Merge $SOURCE_BRANCH → $TARGET_BRANCH"
+          git merge --no-edit -- "origin/$SOURCE_BRANCH"
+          echo "Merged. New HEAD: $(git log -1 --oneline)"
+          echo "::endgroup::"
+        env:
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+
+      - name: Push to remote
+        run: git push origin "$TARGET_BRANCH"
