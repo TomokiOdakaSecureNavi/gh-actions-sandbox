@@ -15,12 +15,12 @@ on:
         description: 'Title of the pull request'
         required: false
         type: string
-        default: 'Auto PR: Update {{base_branch}} from {{source_branch}}'
+        default: 'Auto PR: automated branch update'
       pr_body:
         description: 'Body of the pull request'
         required: false
         type: string
-        default: 'This PR was automatically created when {{source_branch}} branch was updated.'
+        default: 'This PR was automatically created by GitHub Actions.'
 
 jobs:
   create-pr:
@@ -72,25 +72,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create head branch
-        if: steps.check-pr.outputs.exists == 'false' && steps.check-diff.outputs.has_diff == 'true'
-        run: |
-          SOURCE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/${SOURCE_BRANCH}" --jq '.object.sha')
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/heads/${HEAD_BRANCH}" \
-            -f sha="$SOURCE_SHA"
-          echo "Created branch $HEAD_BRANCH at $SOURCE_SHA (from $SOURCE_BRANCH)"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update head branch
-        if: steps.check-pr.outputs.exists == 'true'
+      - name: Sync head branch
+        if: >-
+          steps.check-pr.outputs.exists == 'true' ||
+          (steps.check-pr.outputs.exists == 'false' && steps.check-diff.outputs.has_diff == 'true')
         run: |
           SOURCE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/${SOURCE_BRANCH}" --jq '.object.sha')
           ENCODED_REF=$(jq -rn --arg v "heads/${HEAD_BRANCH}" '$v|@uri')
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/${ENCODED_REF}" \
-            -f sha="$SOURCE_SHA"
-          echo "Updated branch $HEAD_BRANCH to $SOURCE_SHA (from $SOURCE_BRANCH)"
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/${HEAD_BRANCH}" --jq '.object.sha' >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/${ENCODED_REF}" \
+              -f sha="$SOURCE_SHA" -F force=true
+            echo "Updated branch $HEAD_BRANCH to $SOURCE_SHA (from $SOURCE_BRANCH)"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/heads/${HEAD_BRANCH}" \
+              -f sha="$SOURCE_SHA"
+            echo "Created branch $HEAD_BRANCH at $SOURCE_SHA (from $SOURCE_BRANCH)"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -101,7 +100,9 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --base "$BASE_BRANCH" \
             --head "$HEAD_BRANCH" \
-            --title "${{ inputs.pr_title }}" \
-            --body "${{ inputs.pr_body }}"
+            --title "$PR_TITLE" \
+            --body "$PR_BODY"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ inputs.pr_title }}
+          PR_BODY: ${{ inputs.pr_body }}
