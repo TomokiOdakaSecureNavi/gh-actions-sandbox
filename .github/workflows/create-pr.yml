@@ -25,6 +25,9 @@ on:
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+    concurrency:
+      group: create-pr-${{ github.repository }}-${{ inputs.base_branch }}-${{ inputs.source_branch }}
+      cancel-in-progress: true
     permissions:
       contents: write
       pull-requests: write
@@ -35,6 +38,12 @@ jobs:
       HEAD_BRANCH: auto-pr/${{ inputs.base_branch }}-from-${{ inputs.source_branch }}
 
     steps:
+      - name: Validate branch names
+        run: |
+          git check-ref-format --branch "$BASE_BRANCH"
+          git check-ref-format --branch "$SOURCE_BRANCH"
+          git check-ref-format --branch "$HEAD_BRANCH"
+
       - name: Check if PR already exists
         id: check-pr
         run: |
