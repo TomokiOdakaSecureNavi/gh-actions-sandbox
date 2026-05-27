@@ -15,6 +15,6 @@ jobs:
     uses: ./.github/workflows/create-pr.yml
     with:
       base_branch: ${{ matrix.base_branch }}
-      head_branch: master
+      source_branch: master
       pr_title: "Auto PR: Update ${{ matrix.base_branch }} from master"
       pr_body: "This PR was automatically created when master branch was updated."
