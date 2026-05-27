@@ -7,70 +7,117 @@ on:
         description: 'Base branch for the pull request'
         required: true
         type: string
-      head_branch:
-        description: 'Head branch for the pull request'
+      source_branch:
+        description: 'Branch to create the PR head branch from'
         required: true
         type: string
       pr_title:
         description: 'Title of the pull request'
         required: false
         type: string
-        default: 'Auto PR: Update {{base_branch}} from {{head_branch}}'
+        default: 'Auto PR: automated branch update'
       pr_body:
         description: 'Body of the pull request'
         required: false
         type: string
-        default: 'This PR was automatically created when {{head_branch}} branch was updated.'
+        default: 'This PR was automatically created by GitHub Actions.'
 
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+    concurrency:
+      group: create-pr-${{ github.repository }}-${{ inputs.base_branch }}-${{ inputs.source_branch }}
+      cancel-in-progress: true
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
-    
+
+    env:
+      BASE_BRANCH: ${{ inputs.base_branch }}
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+      HEAD_BRANCH: auto-pr/${{ inputs.base_branch }}-from-${{ inputs.source_branch }}
+
     steps:
+      - name: Validate branch names
+        run: |
+          git check-ref-format --branch "$BASE_BRANCH"
+          git check-ref-format --branch "$SOURCE_BRANCH"
+          git check-ref-format --branch "$HEAD_BRANCH"
+
       - name: Check if PR already exists
         id: check-pr
         run: |
-          PR_EXISTS=$(gh pr list --repo ${{ github.repository }} --base ${{ inputs.base_branch }} --head ${{ inputs.head_branch }} --state open --json number --jq 'length')
+          PR_EXISTS=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$BASE_BRANCH" \
+            --head "$HEAD_BRANCH" \
+            --state open \
+            --json number \
+            --jq 'length')
           if [ "$PR_EXISTS" -gt 0 ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "PR already exists"
+            echo "Open PR already exists for head $HEAD_BRANCH"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "No existing PR found"
+            echo "No existing PR found for head $HEAD_BRANCH"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Check for diff between branches
         id: check-diff
         if: steps.check-pr.outputs.exists == 'false'
         run: |
           ENCODED_BASE=$(jq -rn --arg v "$BASE_BRANCH" '$v|@uri')
-          ENCODED_HEAD=$(jq -rn --arg v "$HEAD_BRANCH" '$v|@uri')
-          DIFF_COUNT=$(gh api "repos/$GITHUB_REPOSITORY/compare/${ENCODED_BASE}...${ENCODED_HEAD}" --jq '.total_commits')
+          ENCODED_SOURCE=$(jq -rn --arg v "$SOURCE_BRANCH" '$v|@uri')
+          DIFF_COUNT=$(gh api "repos/$GITHUB_REPOSITORY/compare/${ENCODED_BASE}...${ENCODED_SOURCE}" --jq '.total_commits')
           if [ "$DIFF_COUNT" -eq 0 ]; then
             echo "has_diff=false" >> $GITHUB_OUTPUT
-            echo "No commits between $BASE_BRANCH and $HEAD_BRANCH. Skipping PR creation."
+            echo "No commits between $BASE_BRANCH and $SOURCE_BRANCH. Skipping PR creation."
           else
             echo "has_diff=true" >> $GITHUB_OUTPUT
             echo "Found $DIFF_COUNT commit(s) between branches."
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BASE_BRANCH: ${{ inputs.base_branch }}
-          HEAD_BRANCH: ${{ inputs.head_branch }}
+
+      - name: Sync head branch
+        if: >-
+          steps.check-pr.outputs.exists == 'true' ||
+          (steps.check-pr.outputs.exists == 'false' && steps.check-diff.outputs.has_diff == 'true')
+        run: |
+          ENCODED_SOURCE=$(jq -rn --arg v "$SOURCE_BRANCH" '$v|@uri')
+          ENCODED_HEAD=$(jq -rn --arg v "$HEAD_BRANCH" '$v|@uri')
+          ENCODED_HEAD_REF=$(jq -rn --arg v "heads/${HEAD_BRANCH}" '$v|@uri')
+
+          SOURCE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/branches/${ENCODED_SOURCE}" --jq '.commit.sha') || {
+            echo "::error::Source branch '${SOURCE_BRANCH}' not found"
+            exit 1
+          }
+
+          if gh api "repos/$GITHUB_REPOSITORY/branches/${ENCODED_HEAD}" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/${ENCODED_HEAD_REF}" \
+              -f sha="$SOURCE_SHA" -F force=true
+            echo "Updated branch $HEAD_BRANCH to $SOURCE_SHA (from $SOURCE_BRANCH)"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/heads/${HEAD_BRANCH}" \
+              -f sha="$SOURCE_SHA"
+            echo "Created branch $HEAD_BRANCH at $SOURCE_SHA (from $SOURCE_BRANCH)"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Pull Request
         if: steps.check-pr.outputs.exists == 'false' && steps.check-diff.outputs.has_diff == 'true'
         run: |
           gh pr create \
-            --repo ${{ github.repository }} \
-            --base ${{ inputs.base_branch }} \
-            --head ${{ inputs.head_branch }} \
-            --title "${{ inputs.pr_title }}" \
-            --body "${{ inputs.pr_body }}"
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$BASE_BRANCH" \
+            --head "$HEAD_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ inputs.pr_title }}
+          PR_BODY: ${{ inputs.pr_body }}
