@@ -77,11 +77,17 @@ jobs:
           steps.check-pr.outputs.exists == 'true' ||
           (steps.check-pr.outputs.exists == 'false' && steps.check-diff.outputs.has_diff == 'true')
         run: |
-          SOURCE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/${SOURCE_BRANCH}" --jq '.object.sha')
-          ENCODED_REF=$(jq -rn --arg v "heads/${HEAD_BRANCH}" '$v|@uri')
+          ENCODED_SOURCE=$(jq -rn --arg v "$SOURCE_BRANCH" '$v|@uri')
+          ENCODED_HEAD=$(jq -rn --arg v "$HEAD_BRANCH" '$v|@uri')
+          ENCODED_HEAD_REF=$(jq -rn --arg v "heads/${HEAD_BRANCH}" '$v|@uri')
 
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/${ENCODED_REF}" --jq '.object.sha' >/dev/null 2>&1; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/${ENCODED_REF}" \
+          SOURCE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/branches/${ENCODED_SOURCE}" --jq '.commit.sha') || {
+            echo "::error::Source branch '${SOURCE_BRANCH}' not found"
+            exit 1
+          }
+
+          if gh api "repos/$GITHUB_REPOSITORY/branches/${ENCODED_HEAD}" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/${ENCODED_HEAD_REF}" \
               -f sha="$SOURCE_SHA" -F force=true
             echo "Updated branch $HEAD_BRANCH to $SOURCE_SHA (from $SOURCE_BRANCH)"
           else
